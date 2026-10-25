@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"><title>Gestión de salud</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#f6f7f9;--sf:#fff;--tx:#1d2330;--mu:#667085;--br:#d9dde5;--ac:#1f6f5c;--ac2:#e3f2ee;--rd:#b42318}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14171c;--sf:#1d2128;--tx:#e8ebf0;--mu:#9aa3b2;--br:#303642;--ac:#5cc4a8;--ac2:#1d3a33;--rd:#f97066}}
+:root[data-theme="dark"]{--bg:#14171c;--sf:#1d2128;--tx:#e8ebf0;--mu:#9aa3b2;--br:#303642;--ac:#5cc4a8;--ac2:#1d3a33;--rd:#f97066}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{padding:14px 16px;background:var(--sf);border-bottom:1px solid var(--br);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+h1{font-size:18px;margin:0}.rol{font-size:12px;padding:3px 9px;border-radius:99px;background:var(--ac2);color:var(--ac)}
+nav{display:flex;gap:6px;overflow-x:auto;padding:10px 12px;background:var(--sf);border-bottom:1px solid var(--br)}
+nav button{white-space:nowrap;border:1px solid var(--br);background:var(--bg);color:var(--tx);padding:7px 12px;border-radius:8px;cursor:pointer}
+nav button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+main{padding:14px;max-width:1000px;margin:auto}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+button.b{border:1px solid var(--br);background:var(--sf);color:var(--tx);padding:7px 12px;border-radius:8px;cursor:pointer}
+button.p{background:var(--ac);color:#fff;border-color:var(--ac)}button.d{color:var(--rd)}
+form{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;background:var(--sf);border:1px solid var(--br);border-radius:10px;padding:12px;margin-bottom:14px}
+label{font-size:12px;color:var(--mu);display:flex;flex-direction:column;gap:3px}
+input,select,textarea{font:inherit;padding:7px;border:1px solid var(--br);border-radius:6px;background:var(--bg);color:var(--tx);width:100%}
+.w{overflow-x:auto;background:var(--sf);border:1px solid var(--br);border-radius:10px}
+table{border-collapse:collapse;width:100%}th,td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--br);vertical-align:top}th{font-size:12px;color:var(--mu)}
+.n{color:var(--mu);padding:16px;text-align:center}.tot{margin:10px 0;font-weight:600}
+</style></head><body>
+<header><h1>Gestión de salud · Vasculitis (GPA)</h1><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="b p" id="exall" onclick="exportAll()" style="font-weight:700;padding:10px 16px">⬇ EXPORTAR TODO A EXCEL</button><span class="rol" id="rol">…</span></div></header>
+<nav id="nav"></nav><main id="main"></main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+const M={
+historia:{t:"Historia clínica",f:[["fecha","Fecha","date"],["tipo","Tipo (consulta, estudio, internación)"],["medico","Médico / institución"],["detalle","Detalle / resultado","area"]]},
+turnos:{t:"Turnos",f:[["fecha","Fecha","date"],["hora","Hora","time"],["lugar","Lugar"],["profesional","Profesional / especialidad"],["estado","Estado",["Pendiente","Confirmado","Realizado","Cancelado"]],["notas","Notas"]]},
+burocracia:{t:"Trámites",f:[["fecha","Fecha","date"],["entidad","Hospital / clínica / obra social"],["tramite","Trámite"],["estado","Estado",["Iniciado","En curso","Resuelto","Rechazado"]],["notas","Notas","area"]]},
+legal:{t:"Legal",f:[["fecha","Fecha","date"],["tipo","Tipo",["Carta documento","Amparo","Reclamo","Otro"]],["destinatario","Destinatario"],["abogado","Abogado / contacto"],["estado","Estado",["Pendiente","Enviada","Respondida","Cerrada"]],["detalle","Detalle","area"]]},
+medicamentos:{t:"Medicamentos",f:[["fecha","Actualizado","date"],["nombre","Droga / medicamento"],["marca","Marca"],["dosis","Dosis y frecuencia"],["precio","Precio ($)","number"],["farmacia","Farmacia"]]},
+economia:{t:"Economía",f:[["fecha","Fecha","date"],["tipo","Tipo",["Donación","Gasto","Préstamo recibido","Préstamo devuelto"]],["concepto","Concepto"],["monto","Monto ($)","number"],["persona","Persona / entidad"]]},
+contactos:{t:"Contactos",f:[["nombre","Nombre"],["rol","Rol",["Médico","Farmacia","Abogado","Clínica / hospital","Obra social","Otro"]],["telefono","Teléfono"],["email","Email"],["direccion","Dirección"]]},
+notas:{t:"Notas",f:[["fecha","Fecha","date"],["titulo","Título"],["texto","Texto","area"]]}};
+let db=null,admin=false,cur="historia",rows={},unsub=null;
+const $=s=>document.querySelector(s),esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function msg(t){alert(t)}
+function save(name,data){const b=new Blob([data]),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),4000)}
+function sub(){if(unsub)unsub();if(!db)return;unsub=db.collection(cur).orderBy("creado","desc").onSnapshot(s=>{rows[cur]=s.docs.map(d=>({id:d.id,...(d.data?d.data():d)}));draw()},()=>{rows[cur]=[];draw()})}
+function nav(){$("#nav").innerHTML=Object.keys(M).map(k=>`<button class="${k==cur?"on":""}" data-k="${k}">${M[k].t}</button>`).join("");
+$("#nav").onclick=e=>{const k=e.target.dataset.k;if(k){cur=k;nav();sub();draw()}}}
+function draw(){const m=M[cur],r=rows[cur]||[];let h=`<div class="bar">
+<button class="b p" id="xl" style="font-weight:700;padding:10px 16px">⬇ EXPORTAR EXCEL de esta sección</button>`;
+h+=`<button class="b p" id="pdfs" style="font-weight:700;padding:10px 16px">⬇ EXPORTAR PDF de esta sección</button>`;if(cur=="turnos")h+=`<button class="b" id="ics">Exportar a Google Calendar</button>`;
+if(cur=="notas")h+=`<button class="b" id="pdf">Exportar notas a PDF</button>`;
+if(admin)h+=`<label class="b" style="flex-direction:row;cursor:pointer">Importar Excel<input id="im" type="file" accept=".xlsx,.xls,.csv" hidden></label>`;
+h+=`</div>`;
+if(admin)h+=`<form id="fm">${m.f.map(([k,l,t])=>`<label>${l}${Array.isArray(t)?`<select name="${k}">${t.map(o=>`<option>${o}</option>`).join("")}</select>`:t=="area"?`<textarea name="${k}" rows="2"></textarea>`:`<input name="${k}" type="${t||"text"}" ${t=="number"?'step="any"':""}>`}</label>`).join("")}<label>&nbsp;<button class="b p">Agregar</button></label></form>`;
+if(cur=="economia"){const s={};r.forEach(x=>s[x.tipo]=(s[x.tipo]||0)+Number(x.monto||0));h+=`<div class="tot">${Object.entries(s).map(([k,v])=>`${k}: $${v.toLocaleString("es-AR")}`).join(" · ")||"Sin movimientos"}</div>`}
+h+=`<div class="w"><table><tr>${m.f.map(f=>`<th>${f[1]}</th>`).join("")}${admin?"<th></th>":""}</tr>`;
+h+=r.length?r.map(x=>`<tr>${m.f.map(f=>`<td>${esc(x[f[0]])}</td>`).join("")}${admin?`<td><button class="b d" data-del="${x.id}">Borrar</button></td>`:""}</tr>`).join(""):`<tr><td class="n" colspan="9">Sin registros</td></tr>`;
+$("#main").innerHTML=h+`</table></div>`;
+$("#xl").onclick=()=>{const ws=XLSX.utils.json_to_sheet(r.map(x=>Object.fromEntries(m.f.map(f=>[f[1],x[f[0]]??""]))));const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,m.t);save(`respaldo-${cur}.xlsx`,XLSX.write(wb,{type:"array",bookType:"xlsx"}))};
+if($("#ics"))$("#ics").onclick=()=>{const z=s=>String(s).replace(/[-:]/g,"");const ev=r.filter(x=>x.fecha&&x.estado!="Cancelado").map(x=>{const t=(x.hora||"09:00").replace(":","")+"00",d=z(x.fecha);return`BEGIN:VEVENT\r\nUID:${x.id}@gestion-salud\r\nDTSTAMP:${z(new Date().toISOString().slice(0,19))}Z\r\nDTSTART:${d}T${t}\r\nDURATION:PT1H\r\nSUMMARY:Turno ${(x.profesional||"").replace(/[,;\n]/g," ")}\r\nLOCATION:${(x.lugar||"").replace(/[,;\n]/g," ")}\r\nDESCRIPTION:${(x.notas||"").replace(/[,;\n]/g," ")}\r\nEND:VEVENT`});save("turnos.ics","BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//gestion-salud//ES\r\n"+ev.join("\r\n")+"\r\nEND:VCALENDAR\r\n");msg("Luego importá el archivo .ics en Google Calendar (Configuración > Importar y exportar).")};
+$("#pdfs").onclick=()=>{const d=new jspdf.jsPDF();let y=15;d.setFontSize(15);d.text(m.t,15,y);y+=10;d.setFontSize(10);if(!r.length){d.text("Sin registros",15,y)}r.forEach(x=>{m.f.forEach(f=>{d.splitTextToSize(f[1]+": "+(x[f[0]]??""),180).forEach(l=>{if(y>280){d.addPage();y=15}d.text(l,15,y);y+=5})});y+=3;if(y>280){d.addPage();y=15}d.line(15,y,195,y);y+=6});save("registros-"+cur+".pdf",d.output("arraybuffer"))};
+if($("#pdf"))$("#pdf").onclick=()=>{const d=new jspdf.jsPDF(),W=180;let y=15;r.forEach(x=>{d.setFontSize(13);d.text(String(x.titulo||"Sin título")+"  ("+(x.fecha||"")+")",15,y);y+=7;d.setFontSize(10);d.splitTextToSize(String(x.texto||""),W).forEach(l=>{if(y>280){d.addPage();y=15}d.text(l,15,y);y+=5});y+=6;if(y>270){d.addPage();y=15}});save("notas.pdf",d.output("arraybuffer"))};
+if(admin){$("#fm").onsubmit=async e=>{e.preventDefault();const o=Object.fromEntries(new FormData(e.target));o.creado=Date.now();try{await db.collection(cur).add(o);e.target.reset()}catch(x){msg("No se pudo guardar")}};
+$("#main").onclick=async e=>{const id=e.target.dataset.del;if(id&&confirm("¿Borrar este registro?"))try{await db.collection(cur).doc(id).delete()}catch(x){msg("No se pudo borrar")}};
+$("#im").onchange=async e=>{const f=e.target.files[0];if(!f)return;const wb=XLSX.read(await f.arrayBuffer()),js=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});let n=0;for(const j of js){const o={creado:Date.now()+n};m.f.forEach(([k,l])=>{const v=j[l]??j[k];if(v!==undefined)o[k]=String(v)});try{await db.collection(cur).add(o);n++}catch(x){}}msg(n+" filas importadas (columnas con los mismos nombres que la tabla)")}}}
+async function exportAll(){if(!db)return msg("Sin conexión a los datos");const wb=XLSX.utils.book_new();for(const k of Object.keys(M)){const s=await db.collection(k).orderBy("creado","desc").get();const r=s.docs.map(d=>d.data?d.data():d);XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(r.map(x=>Object.fromEntries(M[k].f.map(f=>[f[1],x[f[0]]??""])))),M[k].t)}save("respaldo-completo.xlsx",XLSX.write(wb,{type:"array",bookType:"xlsx"}))}
+const API="PEGAR_AQUI_LA_URL_DEL_SCRIPT";let KEY="";try{KEY=sessionStorage.getItem("k")||""}catch(e){}
+async function api(b){const r=await fetch(API,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({key:KEY,...b})});return r.json()}
+const mk=j=>({docs:(j.rows||[]).map(r=>({id:r.id,data:()=>r}))});
+db={collection:k=>({orderBy:()=>({onSnapshot:(ok,err)=>{const run=()=>api({action:"list",col:k}).then(j=>j.ok?ok(mk(j)):err&&err()).catch(()=>err&&err());run();const t=setInterval(run,30000);return()=>clearInterval(t)},get:async()=>mk(await api({action:"list",col:k}))}),add:async o=>{const j=await api({action:"add",col:k,data:o});if(!j.ok)throw 0;sub()},doc:id=>({delete:async()=>{const j=await api({action:"delete",col:k,id});if(!j.ok)throw 0;sub()}})})};
+(async()=>{nav();draw();let role=null;while(!role){if(!KEY){KEY=prompt("Ingresá tu clave de acceso")||"";if(!KEY){$("#rol").textContent="Sin acceso (recargá la página)";return}}
+try{const j=await api({action:"role"});role=j.ok?j.role:null}catch(e){$("#rol").textContent="Sin conexión con la hoja de datos";return}
+if(!role){alert("Clave incorrecta");KEY=""}}
+try{sessionStorage.setItem("k",KEY)}catch(e){}
+admin=role=="admin";$("#rol").textContent=(admin?"Administrador":"Solo lectura")+" · cambiar clave";$("#rol").style.cursor="pointer";$("#rol").onclick=()=>{try{sessionStorage.removeItem("k")}catch(e){}location.reload()};sub()})();
+</script></body></html>
