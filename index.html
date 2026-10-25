@@ -37,14 +37,14 @@ medicamentos:{t:"Medicamentos",f:[["fecha","Actualizado","date"],["nombre","Drog
 economia:{t:"Economía",f:[["fecha","Fecha","date"],["tipo","Tipo",["Donación","Gasto","Préstamo recibido","Préstamo devuelto"]],["concepto","Concepto"],["monto","Monto ($)","number"],["persona","Persona / entidad"]]},
 contactos:{t:"Contactos",f:[["nombre","Nombre"],["rol","Rol",["Médico","Farmacia","Abogado","Clínica / hospital","Obra social","Otro"]],["telefono","Teléfono"],["email","Email"],["direccion","Dirección"]]},
 notas:{t:"Notas",f:[["fecha","Fecha","date"],["titulo","Título"],["texto","Texto","area"]]}};
-let db=null,admin=false,cur="historia",rows={},unsub=null;
+let db=null,admin=false,cur="historia",rows={},unsub=null,fvals={},drawn=null;
 const $=s=>document.querySelector(s),esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 function msg(t){alert(t)}
 function save(name,data){const b=new Blob([data]),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),4000)}
-function sub(){if(unsub)unsub();if(!db)return;unsub=db.collection(cur).orderBy("creado","desc").onSnapshot(s=>{rows[cur]=s.docs.map(d=>({id:d.id,...(d.data?d.data():d)}));draw()},()=>{rows[cur]=[];draw()})}
+function sub(){if(unsub)unsub();if(!db)return;unsub=db.collection(cur).orderBy("creado","desc").onSnapshot(s=>{const n=s.docs.map(d=>({id:d.id,...(d.data?d.data():d)}));if(JSON.stringify(n)!==JSON.stringify(rows[cur])){rows[cur]=n;draw()}},()=>{rows[cur]=[];draw()})}
 function nav(){$("#nav").innerHTML=Object.keys(M).map(k=>`<button class="${k==cur?"on":""}" data-k="${k}">${M[k].t}</button>`).join("");
 $("#nav").onclick=e=>{const k=e.target.dataset.k;if(k){cur=k;nav();sub();draw()}}}
-function draw(){const m=M[cur],r=rows[cur]||[];let h=`<div class="bar">
+function draw(){if(drawn&&$("#fm"))fvals[drawn]=Object.fromEntries(new FormData($("#fm")));const m=M[cur],r=rows[cur]||[];let h=`<div class="bar">
 <button class="b p" id="xl" style="font-weight:700;padding:10px 16px">⬇ EXPORTAR EXCEL de esta sección</button>`;
 h+=`<button class="b p" id="pdfs" style="font-weight:700;padding:10px 16px">⬇ EXPORTAR PDF de esta sección</button>`;if(cur=="turnos")h+=`<button class="b" id="ics">Exportar a Google Calendar</button>`;
 if(cur=="notas")h+=`<button class="b" id="pdf">Exportar notas a PDF</button>`;
@@ -54,7 +54,7 @@ if(admin)h+=`<form id="fm">${m.f.map(([k,l,t])=>`<label>${l}${Array.isArray(t)?`
 if(cur=="economia"){const s={};r.forEach(x=>s[x.tipo]=(s[x.tipo]||0)+Number(x.monto||0));h+=`<div class="tot">${Object.entries(s).map(([k,v])=>`${k}: $${v.toLocaleString("es-AR")}`).join(" · ")||"Sin movimientos"}</div>`}
 h+=`<div class="w"><table><tr>${m.f.map(f=>`<th>${f[1]}</th>`).join("")}${admin?"<th></th>":""}</tr>`;
 h+=r.length?r.map(x=>`<tr>${m.f.map(f=>`<td>${esc(x[f[0]])}</td>`).join("")}${admin?`<td><button class="b d" data-del="${x.id}">Borrar</button></td>`:""}</tr>`).join(""):`<tr><td class="n" colspan="9">Sin registros</td></tr>`;
-$("#main").innerHTML=h+`</table></div>`;
+$("#main").innerHTML=h+`</table></div>`;drawn=cur;{const fv=fvals[cur];if(fv&&$("#fm"))for(const k in fv){const el=$("#fm").elements[k];if(el)el.value=fv[k]}}
 $("#xl").onclick=()=>{const ws=XLSX.utils.json_to_sheet(r.map(x=>Object.fromEntries(m.f.map(f=>[f[1],x[f[0]]??""]))));const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,m.t);save(`respaldo-${cur}.xlsx`,XLSX.write(wb,{type:"array",bookType:"xlsx"}))};
 if($("#ics"))$("#ics").onclick=()=>{const z=s=>String(s).replace(/[-:]/g,"");const ev=r.filter(x=>x.fecha&&x.estado!="Cancelado").map(x=>{const t=(x.hora||"09:00").replace(":","")+"00",d=z(x.fecha);return`BEGIN:VEVENT\r\nUID:${x.id}@gestion-salud\r\nDTSTAMP:${z(new Date().toISOString().slice(0,19))}Z\r\nDTSTART:${d}T${t}\r\nDURATION:PT1H\r\nSUMMARY:Turno ${(x.profesional||"").replace(/[,;\n]/g," ")}\r\nLOCATION:${(x.lugar||"").replace(/[,;\n]/g," ")}\r\nDESCRIPTION:${(x.notas||"").replace(/[,;\n]/g," ")}\r\nEND:VEVENT`});save("turnos.ics","BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//gestion-salud//ES\r\n"+ev.join("\r\n")+"\r\nEND:VCALENDAR\r\n");msg("Luego importá el archivo .ics en Google Calendar (Configuración > Importar y exportar).")};
 $("#pdfs").onclick=()=>{const d=new jspdf.jsPDF();let y=15;d.setFontSize(15);d.text(m.t,15,y);y+=10;d.setFontSize(10);if(!r.length){d.text("Sin registros",15,y)}r.forEach(x=>{m.f.forEach(f=>{d.splitTextToSize(f[1]+": "+(x[f[0]]??""),180).forEach(l=>{if(y>280){d.addPage();y=15}d.text(l,15,y);y+=5})});y+=3;if(y>280){d.addPage();y=15}d.line(15,y,195,y);y+=6});save("registros-"+cur+".pdf",d.output("arraybuffer"))};
